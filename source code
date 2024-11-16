@@ -1,0 +1,113 @@
+from django.db import models
+from django.contrib.auth.models import User
+
+class Car(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="cars")
+    title = models.CharField(max_length=100)
+    description = models.TextField()
+    car_type = models.CharField(max_length=50, blank=True)
+    company = models.CharField(max_length=50, blank=True)
+    dealer = models.CharField(max_length=50, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+class CarImage(models.Model):
+    car = models.ForeignKey(Car, on_delete=models.CASCADE, related_name="images")
+    image = models.ImageField(upload_to="car_images/")
+from rest_framework import serializers
+from .models import Car, CarImage
+
+class CarImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CarImage
+        fields = ['id', 'image']
+
+class CarSerializer(serializers.ModelSerializer):
+    images = CarImageSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Car
+        fields = ['id', 'title', 'description', 'car_type', 'company', 'dealer', 'images', 'created_at', 'updated_at']
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework import status
+from .models import Car, CarImage
+from .serializers import CarSerializer
+
+class CarView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Search Functionality
+        search_query = request.query_params.get("search", "")
+        cars = Car.objects.filter(user=request.user)
+        if search_query:
+            cars = cars.filter(
+                Q(title__icontains=search_query) |
+                Q(description__icontains=search_query) |
+                Q(car_type__icontains=search_query) |
+                Q(company__icontains=search_query) |
+                Q(dealer__icontains=search_query)
+            )
+        serializer = CarSerializer(cars, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        data = request.data
+        serializer = CarSerializer(data=data, context={'request': request})
+        if serializer.is_valid():
+            car = serializer.save(user=request.user)
+            # Handle Images
+            images = request.FILES.getlist('images')
+            if len(images) > 10:
+                return Response({"error": "You can upload up to 10 images only"}, status=status.HTTP_400_BAD_REQUEST)
+            for image in images:
+                CarImage.objects.create(car=car, image=image)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+from django.urls import path
+from .views import CarView
+
+urlpatterns = [
+    path('api/cars/', CarView.as_view()),
+]
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+
+const CarList = () => {
+    const [cars, setCars] = useState([]);
+    const [search, setSearch] = useState("");
+
+    useEffect(() => {
+        fetchCars();
+    }, [search]);
+
+    const fetchCars = async () => {
+        const token = localStorage.getItem("authToken");
+        const response = await axios.get(`/api/cars?search=${search}`, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        setCars(response.data);
+    };
+
+    return (
+        <div>
+            <input
+                type="text"
+                placeholder="Search cars..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+            />
+            <ul>
+                {cars.map((car) => (
+                    <li key={car.id}>
+                        {car.title} - {car.description}
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+};
+
+export default CarList;
