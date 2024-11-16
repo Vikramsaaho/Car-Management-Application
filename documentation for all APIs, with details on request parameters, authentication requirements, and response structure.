@@ -1,0 +1,112 @@
+pip install drf-yasg
+Configure Swagger in the Project
+Modify your Django project's urls.py to include Swagger documentation:
+from django.urls import path, re_path
+from rest_framework import permissions
+from drf_yasg.views import get_schema_view
+from drf_yasg import openapi
+
+schema_view = get_schema_view(
+    openapi.Info(
+        title="Car Management API",
+        default_version="v1",
+        description="API documentation for the Car Management Application",
+        terms_of_service="https://www.example.com/terms/",
+        contact=openapi.Contact(email="support@example.com"),
+        license=openapi.License(name="BSD License"),
+    ),
+    public=True,
+    permission_classes=(permissions.AllowAny,),
+)
+
+urlpatterns = [
+    # Your existing routes
+    path('api/docs/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+    path('api/redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
+    re_path(r'^api/swagger(?P<format>\.json|\.yaml)$', schema_view.without_ui(cache_timeout=0), name='schema-json'),
+]
+This configuration will expose:
+
+Swagger UI at /api/docs/
+ReDoc (alternative UI) at /api/redoc/
+Raw JSON/YAML schema at /api/swagger.json or /api/swagger.yaml
+3. Documenting Endpoints
+To include detailed request parameters, authentication requirements, and response structures, you can annotate your API views with proper documentation using drf-yasg.
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework import status
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+
+from .models import Car, CarImage
+from .serializers import CarSerializer
+
+class CarView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_summary="List All Cars",
+        operation_description="Retrieve all cars created by the logged-in user, with an optional search filter.",
+        responses={200: CarSerializer(many=True)},
+        manual_parameters=[
+            openapi.Parameter(
+                "search",
+                openapi.IN_QUERY,
+                description="Search term for filtering cars (title, description, tags).",
+                type=openapi.TYPE_STRING,
+            )
+        ],
+    )
+    def get(self, request):
+        # Logic for retrieving cars
+        pass
+
+    @swagger_auto_schema(
+        operation_summary="Create a Car",
+        operation_description="Add a new car with a title, description, tags, and up to 10 images.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                "title": openapi.Schema(type=openapi.TYPE_STRING, description="Car title"),
+                "description": openapi.Schema(type=openapi.TYPE_STRING, description="Car description"),
+                "car_type": openapi.Schema(type=openapi.TYPE_STRING, description="Type of car"),
+                "company": openapi.Schema(type=openapi.TYPE_STRING, description="Car manufacturer"),
+                "dealer": openapi.Schema(type=openapi.TYPE_STRING, description="Dealer information"),
+                "images": openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Items(type=openapi.TYPE_STRING, format="binary"),
+                    description="Up to 10 car images",
+                ),
+            },
+            required=["title", "description"],
+        ),
+        responses={
+            201: openapi.Response("Car created successfully", CarSerializer),
+            400: "Invalid input or validation error",
+        },
+    )
+    def post(self, request):
+        # Logic for creating a car
+        pass
+Testing and Viewing Documentation
+After adding the above configurations, navigate to http://127.0.0.1:8000/api/docs/ to see the interactive Swagger UI.
+You can test each API directly from the Swagger interface, which supports authentication and parameter entry.
+Example Swagger UI Structure
+1. Endpoint: /api/cars/ [GET]
+Description: List all cars created by the logged-in user.
+Parameters:
+Query parameter: search (optional)
+Type: String
+Description: Search term for filtering cars (matches title, description, tags).
+Authentication: Required (JWT Token in Authorization Header).
+Response:
+200: List of cars
+401: Unauthorized
+Deploying API Documentation
+When deploying:
+
+Frontend Integration:
+Link /api/docs/ in your frontend for developers or administrators.
+Postman Alternative:
+Export Swagger documentation to Postman collections using tools like Swagger-to-Postman.
